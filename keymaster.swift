@@ -71,12 +71,15 @@ func main() {
   }
 
   if (action == "set") {
-    guard setPassword(key: key, password: secret) else {
-      print("Error setting password")
-      exit(EXIT_FAILURE)
+    context.evaluatePolicy(policy, localizedReason: "set to your password") { success, error in
+      guard setPassword(key: key, password: secret) else {
+        print("Error setting password")
+        exit(EXIT_FAILURE)
+      }
+      print("Key \(key) has been sucessfully set in the keychain")
+      exit(EXIT_SUCCESS)
     }
-    print("Key \(key) has been sucessfully set in the keychain")
-    exit(EXIT_SUCCESS)
+    dispatchMain()
   }
 
   if (action == "get") {
