@@ -16,6 +16,16 @@ func setPassword(key: String, password: String) -> Bool {
   return status == errSecSuccess
 }
 
+func deletePassword(key: String) -> Bool {
+let query: [String: Any] = [
+    kSecClass as String: kSecClassGenericPassword,
+    kSecAttrService as String: key,
+    kSecMatchLimit as String: kSecMatchLimitOne
+  ]
+  let status = SecItemDelete(query as CFDictionary)
+  return status == errSecSuccess
+}
+
 func getPassword(key: String) -> String? {
   let query: [String: Any] = [
     kSecClass as String: kSecClassGenericPassword,
@@ -35,7 +45,7 @@ func getPassword(key: String) -> String? {
 }
 
 func usage() {
-  print("keymaster [get|set] [key] [secret]")
+  print("keymaster [get|set|delete] [key] [secret]")
 }
 
 func main() {
@@ -77,6 +87,24 @@ func main() {
           exit(EXIT_FAILURE)
         }
         print(password)
+        exit(EXIT_SUCCESS)
+      } else {
+        let errorDescription = error?.localizedDescription ?? "Unknown error"
+        print("Error \(errorDescription)")
+        exit(EXIT_FAILURE)
+      }
+    }
+    dispatchMain()
+  }
+
+  if (action == "delete") {
+    context.evaluatePolicy(policy, localizedReason: "delete your password") { success, error in
+      if success && error == nil {
+        guard deletePassword(key: key) else {
+          print("Error deleting password")
+          exit(EXIT_FAILURE)
+        }
+        print("Key \(key) has been sucessfully deleted from the keychain")
         exit(EXIT_SUCCESS)
       } else {
         let errorDescription = error?.localizedDescription ?? "Unknown error"
