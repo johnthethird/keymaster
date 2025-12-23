@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.keymaster.keymasterd</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/keymasterd</string>
+        <string>--port</string>
+        <string>8787</string>
+        <string>--bind</string>
+        <string>127.0.0.1</string>
+        <string>--username</string>
+        <string>admin</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>KEYMASTERD_PASSWORD</key>
+        <string>CHANGE_ME_TO_SECURE_PASSWORD</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/keymasterd.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/keymasterd.log</string>
+</dict>
+</plist>

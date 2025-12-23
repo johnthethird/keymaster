@@ -1,122 +1,202 @@
-// Keymaster, access Keychain secrets guarded by TouchID
+// Keymaster — secure Keychain helper guarded by Touch ID or your login password
 //
+// Build:  swiftc keymaster.swift -o keymaster
+// Usage:  keymaster --help
+// Forked: https://github.com/johnthethird/keymaster
+
 import Foundation
 import LocalAuthentication
+import Security
 
-let policy = LAPolicy.deviceOwnerAuthenticationWithBiometrics
+// MARK: - Keychain helpers
 
+@discardableResult
 func setPassword(key: String, password: String) -> Bool {
-  let query: [String: Any] = [
-    kSecClass as String: kSecClassGenericPassword,
-    kSecAttrService as String: key,
-    kSecValueData as String: password
-  ]
+    let passwordData = Data(password.utf8)
+    let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: key,
+        kSecValueData as String: passwordData,
+    ]
 
-  let status = SecItemAdd(query as CFDictionary, nil)
-  return status == errSecSuccess
+    // Try to add first; if it already exists, update.
+    let status = SecItemAdd(query as CFDictionary, nil)
+    if status == errSecDuplicateItem {
+        let attrsToUpdate = [kSecValueData as String: passwordData]
+        return SecItemUpdate(query as CFDictionary,
+                             attrsToUpdate as CFDictionary) == errSecSuccess
+    }
+    return status == errSecSuccess
 }
 
+@discardableResult
 func deletePassword(key: String) -> Bool {
-let query: [String: Any] = [
-    kSecClass as String: kSecClassGenericPassword,
-    kSecAttrService as String: key,
-    kSecMatchLimit as String: kSecMatchLimitOne
-  ]
-  let status = SecItemDelete(query as CFDictionary)
-  return status == errSecSuccess
+    let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: key,
+    ]
+    return SecItemDelete(query as CFDictionary) == errSecSuccess
 }
 
 func getPassword(key: String) -> String? {
-  let query: [String: Any] = [
-    kSecClass as String: kSecClassGenericPassword,
-    kSecAttrService as String: key,
-    kSecMatchLimit as String: kSecMatchLimitOne,
-    kSecReturnData as String: true
-  ]
-  var item: CFTypeRef?
-  let status = SecItemCopyMatching(query as CFDictionary, &item)
+    let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: key,
+        kSecMatchLimit as String: kSecMatchLimitOne,
+        kSecReturnData as String: true,
+    ]
 
-  guard status == errSecSuccess,
-    let passwordData = item as? Data,
-    let password = String(data: passwordData, encoding: String.Encoding.utf8)
-  else { return nil }
-
-  return password
+    var item: CFTypeRef?
+    guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+          let data = item as? Data,
+          let pwd  = String(data: data, encoding: .utf8) else {
+        return nil
+    }
+    return pwd
 }
 
-func usage() {
-  print("keymaster [get|set|delete] [key] [secret]")
+// MARK: - Authentication
+
+/// Authenticate with Touch ID if available, otherwise the macOS login
+/// password.  A single sheet is shown; pressing “Use Password…” switches
+/// directly to the password prompt without needing a second call.
+func authenticate(
+    reason: String,
+    context: LAContext = .init(),
+    reply: @escaping (Bool, Error?) -> Void)
+{
+    // Force fresh biometrics every time.
+    context.touchIDAuthenticationAllowableReuseDuration = 0
+
+    var error: NSError?
+    guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+        reply(false, error)
+        return
+    }
+
+    context.evaluatePolicy(.deviceOwnerAuthentication,
+                           localizedReason: reason,
+                           reply: reply)
+}
+
+// MARK: - CLI
+
+func printHelp() {
+    print(
+    """
+    Keymaster — store & retrieve small secrets in your macOS Keychain,
+    protected by Touch ID or your login password.
+
+    USAGE:
+      keymaster set <key> <secret>              Store or update <secret> for <key>
+      keymaster get <key> [options]             Print secret to stdout
+      keymaster delete <key>                    Remove secret from Keychain
+
+    OPTIONS:
+      -h, --help                                Display this help message and exit
+      -d, --description <text>                  Custom description for biometric prompt (get only)
+
+    EXAMPLES:
+      keymaster set github_token "abc123"
+      keymaster get github_token
+      keymaster get vpn_password --description "VPN wants to authenticate"
+      keymaster delete github_token
+    """)
 }
 
 func main() {
-  let inputArgs: [String] = Array(CommandLine.arguments.dropFirst())
-  if (inputArgs.count < 2 || inputArgs.count > 3) {
-    usage()
-    exit(EXIT_FAILURE) 
-  }
-  let action = inputArgs[0]
-  let key = inputArgs[1]
-  var secret = ""
-  if (action == "set" && inputArgs.count == 3) {
-    secret = inputArgs[2]
-  }
+    var args = Array(CommandLine.arguments.dropFirst())
 
-  let context = LAContext()
-  context.touchIDAuthenticationAllowableReuseDuration = 0
-
-  var error: NSError?
-  guard context.canEvaluatePolicy(policy, error: &error) else {
-    print("This Mac doesn't support deviceOwnerAuthenticationWithBiometrics")
-    exit(EXIT_FAILURE)
-  }
-
-  if (action == "set") {
-    context.evaluatePolicy(policy, localizedReason: "set to your password") { success, error in
-      guard setPassword(key: key, password: secret) else {
-        print("Error setting password")
-        exit(EXIT_FAILURE)
-      }
-      print("Key \(key) has been sucessfully set in the keychain")
-      exit(EXIT_SUCCESS)
-    }
-    dispatchMain()
-  }
-
-  if (action == "get") {
-    context.evaluatePolicy(policy, localizedReason: "access to your password") { success, error in
-      if success && error == nil {
-        guard let password = getPassword(key: key) else {
-          print("Error getting password")
-          exit(EXIT_FAILURE)
-        }
-        print(password)
+    // Early exit for --help.
+    if let first = args.first, ["--help", "-h"].contains(first) {
+        printHelp()
         exit(EXIT_SUCCESS)
-      } else {
-        let errorDescription = error?.localizedDescription ?? "Unknown error"
-        print("Error \(errorDescription)")
-        exit(EXIT_FAILURE)
-      }
     }
-    dispatchMain()
-  }
 
-  if (action == "delete") {
-    context.evaluatePolicy(policy, localizedReason: "delete your password") { success, error in
-      if success && error == nil {
-        guard deletePassword(key: key) else {
-          print("Error deleting password")
-          exit(EXIT_FAILURE)
-        }
-        print("Key \(key) has been sucessfully deleted from the keychain")
-        exit(EXIT_SUCCESS)
-      } else {
-        let errorDescription = error?.localizedDescription ?? "Unknown error"
-        print("Error \(errorDescription)")
+    guard args.count >= 2 else {
+        printHelp()
         exit(EXIT_FAILURE)
-      }
     }
-    dispatchMain()
-  }
+
+    let action = args.removeFirst()
+    let key    = args.removeFirst()
+
+    // Parse optional description for "get" command
+    var customDescription: String?
+    var secret = ""
+
+    if action == "get" {
+        // Check for --description or -d flag
+        while !args.isEmpty {
+            let arg = args.removeFirst()
+            if arg == "--description" || arg == "-d" {
+                if !args.isEmpty {
+                    customDescription = args.removeFirst()
+                }
+            }
+        }
+    } else if action == "set" {
+        secret = args.first ?? ""
+    }
+
+    // Build authentication reason
+    let authReason: String
+    if let description = customDescription {
+        authReason = description
+    } else {
+        authReason = "\(action) the secret for \"\(key)\""
+    }
+
+    switch action {
+    case "set", "get", "delete":
+        // Show which key is being accessed
+        if action == "get" {
+            fputs("Reading key \"\(key)\" from Keychain...\n", stderr)
+        }
+
+        authenticate(reason: authReason) { success, error in
+            guard success else {
+                fputs("Authentication failed: \(error?.localizedDescription ?? "Unknown error")\n", stderr)
+                exit(EXIT_FAILURE)
+            }
+
+            switch action {
+            case "set":
+                guard !secret.isEmpty else {
+                    fputs("Error: <secret> missing for set action\n", stderr)
+                    exit(EXIT_FAILURE)
+                }
+                guard setPassword(key: key, password: secret) else {
+                    fputs("Error writing to Keychain\n", stderr)
+                    exit(EXIT_FAILURE)
+                }
+                print("✔ Key \"\(key)\" stored successfully")
+
+            case "get":
+                guard let pwd = getPassword(key: key) else {
+                    fputs("No item found for \"\(key)\"\n", stderr)
+                    exit(EXIT_FAILURE)
+                }
+                print(pwd)
+
+            case "delete":
+                guard deletePassword(key: key) else {
+                    fputs("Error deleting item for \"\(key)\"\n", stderr)
+                    exit(EXIT_FAILURE)
+                }
+                print("✔ Key \"\(key)\" deleted successfully")
+            default: break // Unreached
+            }
+            exit(EXIT_SUCCESS)
+        }
+
+        // Keep the process alive while the asynchronous auth prompt is shown.
+        dispatchMain()
+
+    default:
+        printHelp()
+        exit(EXIT_FAILURE)
+    }
 }
 
 main()

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.keymaster.keymasterd-inetd</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/keymasterd-inetd</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>KEYMASTERD_USERNAME</key>
+        <string>admin</string>
+        <key>KEYMASTERD_PASSWORD</key>
+        <string>CHANGE_ME_TO_SECURE_PASSWORD</string>
+    </dict>
+
+    <key>Sockets</key>
+    <dict>
+        <key>Listeners</key>
+        <dict>
+            <key>SockServiceName</key>
+            <string>8787</string>
+            <key>SockType</key>
+            <string>stream</string>
+            <key>SockFamily</key>
+            <string>IPv4</string>
+            <key>SockNodeName</key>
+            <string>127.0.0.1</string>
+        </dict>
+    </dict>
+
+    <key>inetdCompatibility</key>
+    <dict>
+        <key>Wait</key>
+        <false/>
+    </dict>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/keymasterd-inetd.log</string>
+</dict>
+</plist>
