@@ -9,7 +9,7 @@ func setPassword(key: String, password: String) -> Bool {
   let query: [String: Any] = [
     kSecClass as String: kSecClassGenericPassword,
     kSecAttrService as String: key,
-    kSecValueData as String: password
+    kSecValueData as String: password.data(using: .utf8)!
   ]
 
   let status = SecItemAdd(query as CFDictionary, nil)
@@ -17,7 +17,7 @@ func setPassword(key: String, password: String) -> Bool {
 }
 
 func deletePassword(key: String) -> Bool {
-let query: [String: Any] = [
+  let query: [String: Any] = [
     kSecClass as String: kSecClassGenericPassword,
     kSecAttrService as String: key,
     kSecMatchLimit as String: kSecMatchLimitOne
@@ -38,7 +38,7 @@ func getPassword(key: String) -> String? {
 
   guard status == errSecSuccess,
     let passwordData = item as? Data,
-    let password = String(data: passwordData, encoding: String.Encoding.utf8)
+    let password = String(data: passwordData, encoding: .utf8)
   else { return nil }
 
   return password
@@ -52,7 +52,7 @@ func main() {
   let inputArgs: [String] = Array(CommandLine.arguments.dropFirst())
   if (inputArgs.count < 2 || inputArgs.count > 3) {
     usage()
-    exit(EXIT_FAILURE) 
+    exit(EXIT_FAILURE)
   }
   let action = inputArgs[0]
   let key = inputArgs[1]
@@ -72,19 +72,24 @@ func main() {
 
   if (action == "set") {
     context.evaluatePolicy(policy, localizedReason: "set to your password") { success, error in
-      guard setPassword(key: key, password: secret) else {
-        print("Error setting password")
+      if success {
+        guard setPassword(key: key, password: secret) else {
+          print("Error setting password")
+          exit(EXIT_FAILURE)
+        }
+        print("Key \(key) has been successfully set in the keychain")
+        exit(EXIT_SUCCESS)
+      } else {
+        print("Authentication failed or was canceled: \(error?.localizedDescription ?? "Unknown error")")
         exit(EXIT_FAILURE)
       }
-      print("Key \(key) has been sucessfully set in the keychain")
-      exit(EXIT_SUCCESS)
     }
     dispatchMain()
   }
 
   if (action == "get") {
     context.evaluatePolicy(policy, localizedReason: "access to your password") { success, error in
-      if success && error == nil {
+      if success {
         guard let password = getPassword(key: key) else {
           print("Error getting password")
           exit(EXIT_FAILURE)
@@ -92,8 +97,7 @@ func main() {
         print(password)
         exit(EXIT_SUCCESS)
       } else {
-        let errorDescription = error?.localizedDescription ?? "Unknown error"
-        print("Error \(errorDescription)")
+        print("Authentication failed or was canceled: \(error?.localizedDescription ?? "Unknown error")")
         exit(EXIT_FAILURE)
       }
     }
@@ -102,16 +106,15 @@ func main() {
 
   if (action == "delete") {
     context.evaluatePolicy(policy, localizedReason: "delete your password") { success, error in
-      if success && error == nil {
+      if success {
         guard deletePassword(key: key) else {
           print("Error deleting password")
           exit(EXIT_FAILURE)
         }
-        print("Key \(key) has been sucessfully deleted from the keychain")
+        print("Key \(key) has been successfully deleted from the keychain")
         exit(EXIT_SUCCESS)
       } else {
-        let errorDescription = error?.localizedDescription ?? "Unknown error"
-        print("Error \(errorDescription)")
+        print("Authentication failed or was canceled: \(error?.localizedDescription ?? "Unknown error")")
         exit(EXIT_FAILURE)
       }
     }
